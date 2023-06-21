@@ -27,6 +27,7 @@ target_compile_features(nls_test PUBLIC cxx_std_20)
 
 # Robust NLS
 add_executable(robust_nls
+  src/levenberg_marquardt.cpp
   src/robust_nls.cpp
 )
 target_link_libraries(robust_nls
@@ -40,13 +41,13 @@ target_include_directories(robust_nls PUBLIC
 target_compile_features(robust_nls PUBLIC cxx_std_20)
 
 # Sphere fitting
-add_executable(sphere_fitting
-    src/sphere_fitting.cpp
+add_executable(ceres_test
+    src/ceres_test.cpp
 )
-target_link_libraries(sphere_fitting
+target_link_libraries(ceres_test
     Ceres::ceres
     Eigen3::Eigen
     fmt::fmt
     spdlog::spdlog
 )
-target_compile_features(sphere_fitting PUBLIC cxx_std_20)
+target_compile_features(ceres_test PUBLIC cxx_std_20)

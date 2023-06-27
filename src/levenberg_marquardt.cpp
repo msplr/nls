@@ -15,11 +15,13 @@ void CostFunction::addResidual(IResidual* res, ILoss* loss)
     lossFunctions_.emplace_back(loss);
 }
 
-Eigen::VectorXd CostFunction::residual(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian)
+Eigen::VectorXd CostFunction::evaluate(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian)
 {
     // TODO: add support for robust loss functions
 
     Eigen::VectorXd cost;
+    Eigen::MatrixXd jac;
+    Eigen::VectorXd val;
 
     size_t numResiduals = 0;
     for (auto& res : residuals_) {
@@ -31,35 +33,65 @@ Eigen::VectorXd CostFunction::residual(const Eigen::VectorXd& params, Eigen::Mat
     }
 
     int row = 0;
-    for (auto& res : residuals_) {
-        int n = res->size();
+    int i = 0;
+    for (auto& residual : residuals_) {
+        Eigen::MatrixXd* jacp = nullptr;
+        int n = residual->size();
+
         if (jacobian != nullptr) {
-            Eigen::MatrixXd jac;
             jac.resize(n, params.size());
-            cost.segment(row, n) = res->value(params, &jac);
-            jacobian->middleRows(row, n) = jac;
-        } else {
-            cost.segment(row, n) = res->value(params, nullptr);
+            jacp = &jac;
         }
+
+        val = residual->value(params, jacp);
+
+        if (lossFunctions_[i] != nullptr)
+            applyLoss(*lossFunctions_[i], val, jacp);
+
+        cost.segment(row, n) = val;
+        if (jacobian != nullptr) {
+            jacobian->middleRows(row, n) = jac;
+        }
+
         row += n;
+        i++;
     }
 
     return cost;
 }
 
+void CostFunction::applyLoss(ILoss& loss, Eigen::VectorXd& residual, Eigen::MatrixXd* jacobian)
+{
+
+    // TODO: it is more complicated than this...
+    double derivatives[2];
+    for (int i = 0; i < residual.size(); i++) {
+        // residual must be positive for loss function
+        if (residual(i) < 0.0) {
+            residual(i) = -residual(i);
+            if (jacobian != nullptr)
+                jacobian->row(i) = -jacobian->row(i);
+        }
+
+        loss.eval(residual(i), derivatives);
+        residual(i) = derivatives[0];
+        if (jacobian != nullptr) {
+            jacobian->row(i) = derivatives[1] * jacobian->row(i);
+        }
+    }
+}
 
 std::string toString(Status s)
 {
-    switch (s)
-    {
-    case Status::Converged:
-        return "Converged";
-    case Status::IterationsLimit:
-        return "IterationsLimit";
-    case Status::Init:
-        return "Init";
-    default:
-        return "Stauts::UNKNOWN";
+    switch (s) {
+        case Status::Converged:
+            return "Converged";
+        case Status::IterationsLimit:
+            return "IterationsLimit";
+        case Status::Init:
+            return "Init";
+        default:
+            return "Stauts::UNKNOWN";
     }
 }
 
@@ -88,7 +120,7 @@ Status solve(CostFunction& costFunc, Eigen::VectorXd& x)
     const double eps2 = 1e-8;
 
     // initialization
-    f = costFunc.residual(x, &J);
+    f = costFunc.evaluate(x, &J);
     g.noalias() = J.transpose() * f;
 
     double mu = 1e+6 * J.maxCoeff();
@@ -101,7 +133,7 @@ Status solve(CostFunction& costFunc, Eigen::VectorXd& x)
         H.diagonal().array() += mu;
 
         // solve (J'J + mu I) dx = -g
-        step = H.llt().solve(-g);
+        step = H.llt().solve(-g); // TODO: Cholesky might be numerically unstable
 
         if (step.norm() < eps2 * (x.norm() + eps2)) {
             spdlog::info("step criterion: step.norm() < eps2 * (x.norm() + eps2) : {:.2e} < {:.2e}", step.norm(), eps2 * (x.norm() + eps2));
@@ -111,14 +143,15 @@ Status solve(CostFunction& costFunc, Eigen::VectorXd& x)
 
         x_new = x + step;
 
-        f_new = costFunc.residual(x_new);
+        f_new = costFunc.evaluate(x_new);
 
         const double new_cost = f_new.dot(f_new);
         cost = f.dot(f);
 
         gain_ratio = (cost - new_cost) / step.dot(mu * step - g);
 
-        if (k == 0) spdlog::info("iter    cost      change       rho        mu       |step|      |g|");
+        if (k == 0)
+            spdlog::info("iter    cost      change       rho        mu       |step|      |g|");
         spdlog::info("{:>3}: {: .2e}  {: .2e}  {: .2e}  {: .2e}  {: .2e}  {: .2e}",
                      k, cost, cost - new_cost, gain_ratio, mu, step.norm(), g.norm());
 
@@ -126,7 +159,7 @@ Status solve(CostFunction& costFunc, Eigen::VectorXd& x)
             // step is acceptable
             x = x_new;
             cost = new_cost;
-            f = costFunc.residual(x, &J);
+            f = costFunc.evaluate(x, &J);
 
             // gradient g = J'f
             g.noalias() = J.transpose() * f;

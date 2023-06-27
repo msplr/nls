@@ -81,7 +81,7 @@ private:
 void testResidual()
 {
     using namespace nls;
-    const Vector params{{-4, -5, 4, -4}};
+    const Eigen::VectorXd params{{-4, -5, 4, -4}};
 
     const double t = 1.0;
 
@@ -90,7 +90,7 @@ void testResidual()
     spdlog::info("val0: {} jac0: {}", val0, jac0);
 
     TestResidual res1(t, 0.0);
-    Matrix jac1;
+    Eigen::MatrixXd jac1;
     auto val1 = res1.value(params, &jac1);
     spdlog::info("val1: {} jac1: {}", -val1(0), jac1);
 }
@@ -147,7 +147,10 @@ void testExampleProblem()
 const double data[] = {
 #include "data.csv"
 // outliers...
-// 10, 20, 30,
+10, 20, 30,
+1, -2, 3,
+0, 0, 1,
+// 0, 0, 0, // why is this outlier a problem?
 };
 const int numObservations = sizeof(data) / (3*sizeof(double));
 // clang-format on
@@ -163,7 +166,6 @@ struct SphereResidual : public nls::AutoDiffResidual<SphereResidual, 1, 4> {
     bool operator()(const T* p, T* residual) const
     {
         residual[0] = p[0] - sqrt(pow(p[1] - x_, 2) + pow(p[2] - y_, 2) + pow(p[3] - z_, 2));
-        // residual[0] = pow(p[0], 2) - pow(p[1] - x_, 2) + pow(p[2] - y_, 2) + pow(p[3] - z_, 2);
         return true;
     }
 
@@ -181,7 +183,10 @@ void testSphere()
     for (int i = 0; i < numObservations; ++i) {
         const double* obs = &data[3 * i];
         auto* res = new SphereResidual(obs[0], obs[1], obs[2]);
-        problem.addResidual(res, nullptr);
+        // problem.addResidual(res, new nls::L2Loss());
+        problem.addResidual(res, new nls::CauchyLoss());
+        // problem.addResidual(res, new nls::HuberLoss());
+        // problem.addResidual(res, new nls::SoftL1Loss());
     }
 
     Eigen::VectorXd x_star{{1.0, 1.0, 2.0, -3.0}};

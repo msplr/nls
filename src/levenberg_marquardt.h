@@ -13,28 +13,27 @@ namespace nls {
 
 // Interface classes
 
-using Vector = Eigen::Matrix<double, Eigen::Dynamic, 1>;
-using Matrix = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>;
-
 class IResidual {
 public:
-    virtual Vector value(const Vector& params, Matrix* jacobian) = 0;
+    virtual Eigen::VectorXd value(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian) = 0;
     virtual size_t size() = 0;
     virtual ~IResidual() = default;
 };
 
 class ILoss {
 public:
-    virtual void eval(double cost, double* derivatives) = 0;
+    virtual void eval(double residual, double* derivatives) = 0;
     virtual ~ILoss() = default;
 };
 
 class CostFunction {
 public:
     void addResidual(IResidual* resv, ILoss* loss);
-    Eigen::VectorXd residual(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian = nullptr);
+    Eigen::VectorXd evaluate(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian = nullptr);
 
 private:
+    void applyLoss(ILoss& loss, Eigen::VectorXd& residual, Eigen::MatrixXd* jacobian = nullptr);
+
     std::vector<std::unique_ptr<IResidual>> residuals_;
     std::vector<std::unique_ptr<ILoss>> lossFunctions_;
 };
@@ -47,10 +46,8 @@ enum class Status {
 std::string toString(Status s);
 std::ostream& operator<<(std::ostream& os, Status s);
 
-
 /// Non-linear Least Squares Solver
 Status solve(CostFunction& costFunc, Eigen::VectorXd& x);
-
 
 // Helper classes for writing residuals using Eigen AutoDiff
 template <typename DERIVED, int NUM_RESIDUALS = 1, int NUM_PARAMS = 1>
@@ -61,11 +58,11 @@ public:
     using ADResiduals = Eigen::Matrix<ADScalar, NUM_RESIDUALS, 1>;
     using ADParams = Eigen::Matrix<ADScalar, NUM_PARAMS, 1>;
 
-    Vector value(const Vector& params, Matrix* jacobian) override
+    Eigen::VectorXd value(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian) override
     {
         DERIVED& functor = *static_cast<DERIVED*>(this); // CRTP in action
 
-        Vector res(NUM_RESIDUALS);
+        Eigen::VectorXd res(NUM_RESIDUALS);
 
         assert(NUM_PARAMS == params.rows());
         if (jacobian == nullptr) {
@@ -76,7 +73,7 @@ public:
 
             // seed Autodiff parameter vector
             for (int i = 0; i < NUM_PARAMS; i++) {
-                paramsAd[i].derivatives() = Vector::Unit(NUM_PARAMS, i);
+                paramsAd[i].derivatives() = Eigen::VectorXd::Unit(NUM_PARAMS, i);
             }
 
             ADResiduals ad_res;
@@ -98,15 +95,15 @@ public:
 template <typename DERIVED>
 class AutoDiffResidualDynamic : public IResidual {
 public:
-    using ADScalar = Eigen::AutoDiffScalar<Vector>;
+    using ADScalar = Eigen::AutoDiffScalar<Eigen::VectorXd>;
     using ADVector = Eigen::Matrix<ADScalar, Eigen::Dynamic, 1>;
 
-    Vector value(const Vector& params, Matrix* jacobian) override
+    Eigen::VectorXd value(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian) override
     {
         DERIVED& functor = *static_cast<DERIVED*>(this); // CRTP in action
 
         int numResiduals = size();
-        Vector res(numResiduals);
+        Eigen::VectorXd res(numResiduals);
 
         if (jacobian == nullptr) {
             functor(params.data(), res.data());
@@ -116,7 +113,7 @@ public:
 
             // seed Autodiff parameter vector
             for (int i = 0; i < params.rows(); i++) {
-                paramsAd[i].derivatives() = Vector::Unit(params.rows(), i);
+                paramsAd[i].derivatives() = Eigen::VectorXd::Unit(params.rows(), i);
             }
 
             ADVector ad_res(numResiduals);
@@ -130,6 +127,53 @@ public:
             }
             return res;
         }
+    }
+};
+
+// Loss functions
+struct L2Loss : public nls::ILoss {
+    ~L2Loss() override = default;
+    void eval(double residual, double* derivatives) override
+    {
+        derivatives[0] = residual;
+        derivatives[1] = 1.0;
+    }
+};
+
+struct CauchyLoss : public nls::ILoss {
+    CauchyLoss(double c = 1.0)
+        : c_(c)
+    {
+    }
+    ~CauchyLoss() override = default;
+    void eval(double residual, double* derivatives) override
+    {
+        derivatives[0] = c_ * log(1 + residual / c_);
+        derivatives[1] = 1.0 / (1 + residual / c_);
+    }
+    double c_;
+};
+
+struct HuberLoss : public nls::ILoss {
+    ~HuberLoss() override = default;
+    void eval(double residual, double* derivatives) override
+    {
+        if (residual > 1.0) {
+            derivatives[0] = 2.0 * sqrt(residual) - 1;
+            derivatives[1] = 1.0 / sqrt(residual);
+        } else {
+            derivatives[0] = residual;
+            derivatives[1] = 1.0;
+        }
+    }
+};
+
+struct SoftL1Loss : public nls::ILoss {
+    ~SoftL1Loss() override = default;
+    void eval(double residual, double* derivatives) override
+    {
+        derivatives[0] = 2.0 * (sqrt(1 + residual) - 1);
+        derivatives[1] = 1.0 / sqrt(1 + residual);
     }
 };
 

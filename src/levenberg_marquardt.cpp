@@ -1,4 +1,4 @@
-#include "levenberg_marquardt.h"
+#include "nls/levenberg_marquardt.h"
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -7,7 +7,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ostr.h>
 
-#include "eigen_fmt.h"
+#include "nls/eigen_fmt.h"
 
 namespace nls {
 

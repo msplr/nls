@@ -28,7 +28,7 @@ public:
 
 class CostFunction {
 public:
-    void addResidual(IResidual* resv, ILoss* loss);
+    void addResidual(IResidual* resv, ILoss* loss = nullptr);
     Eigen::VectorXd evaluate(const Eigen::VectorXd& params, Eigen::MatrixXd* jacobian = nullptr);
 
 private:

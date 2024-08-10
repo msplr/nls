@@ -2,7 +2,7 @@
 #include <glog/logging.h>
 #include <spdlog/spdlog.h>
 
-#include "eigen_fmt.h"
+#include "nls/eigen_fmt.h"
 
 // generated with
 // import numpy as np
@@ -19,7 +19,7 @@
 
 // clang-format off
 const double data[] = {
-#include "data.csv"
+#include "../examples/data.csv"
   // outliers...
   10, 20, 30,
 };

@@ -169,12 +169,19 @@ struct HuberLoss : public nls::ILoss {
 };
 
 struct SoftL1Loss : public nls::ILoss {
+    SoftL1Loss(double c = 1.0)
+        : c_(c)
+    {
+    }
     ~SoftL1Loss() override = default;
     void eval(double residual, double* derivatives) override
     {
-        derivatives[0] = 2.0 * (sqrt(1 + residual) - 1);
-        derivatives[1] = 1.0 / sqrt(1 + residual);
+        derivatives[0] = c_ * 2.0 * (sqrt(1 + residual / c_) - 1);
+        derivatives[1] = 1.0 / sqrt(1 + residual / c_);
     }
+    double c_;
 };
 
 } // namespace nls
+
+template <> struct fmt::formatter<nls::Status> : fmt::ostream_formatter {};

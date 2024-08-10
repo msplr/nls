@@ -2,6 +2,8 @@
 #include <glog/logging.h>
 #include <spdlog/spdlog.h>
 
+#include "eigen_fmt.h"
+
 // generated with
 // import numpy as np
 // r = 1.0

@@ -9,6 +9,8 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ostr.h>
 
+#include "eigen_fmt.h"
+
 template <typename DERIVED, int numResiudals = 1>
 class AutoDiffResidual {
 public:

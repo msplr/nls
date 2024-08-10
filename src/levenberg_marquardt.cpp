@@ -7,6 +7,8 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ostr.h>
 
+#include "eigen_fmt.h"
+
 namespace nls {
 
 void CostFunction::addResidual(IResidual* res, ILoss* loss)
